@@ -4,17 +4,19 @@ Created on Thu Jul 18 14:00:21 2019
 
 @author: disbr007
 
-Download sea-ice concentration rasters from NSDIC FTP
+Downloads sea-ice concentration rasters from NSDIC FTP.
 
 Resamples NSDIC Sea-Ice Rasters to change non-sea-ice class values
 (land, coast, missing, pole hole, ocean) to be NoData value for
-subsequent analysis. This is so that rasters can be searched for
-any valid value..
+subsequent analysis. This is no a legacy preprocessing step, as
+determine_sea_ice.py does this on-the-fly.
+This was so that rasters can be searched for any valid value.
 """
 
 import argparse
 from datetime import datetime
 from ftplib import FTP
+import logging
 import numpy as np
 import os
 from pathlib import Path
@@ -23,10 +25,13 @@ import sys
 from osgeo import gdal, osr
 from tqdm import tqdm
 
-from logging_utils import create_logger
 
-
-logger = create_logger(__name__, 'sh', 'INFO')
+logger = logging.getLogger(__name__)
+logger.setLevel('INFO')
+sh = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sh.setFormatter(formatter)
+logger.addHandler(sh)
 
 gdal.UseExceptions()
 
@@ -38,7 +43,8 @@ FTP_POLES = {'north': FTP_BASE_DIR + r'/north/daily/geotiff',
 EXTENT_NAME = 'extent'
 CONCENTRATION_NAME = 'concentration'
 
-def update_rasters(last_update: str, dest_dir: str,
+
+def dl_sea_ice(last_update: str, dest_dir: str,
                    north: bool = True, south: bool = True,
                    dl_extent: bool = True, dl_concentration: bool = True,
                    overwrite: bool = False):
@@ -114,7 +120,7 @@ def update_rasters(last_update: str, dest_dir: str,
                 pbar_days.close()
                 pbar_months.update(1)
 
-        logger.info('Files downloaded: {:,}'.format(files_dl))
+    logger.info('Total files downloaded: {:,}'.format(files_dl))
 
 
 def resample_nodata(f_p, out_path, convert_vals, out_nodata):
@@ -238,9 +244,6 @@ if __name__ == '__main__':
     parser.add_argument('--last_update_date', type=str, default=datetime.now().strftime('%Y-%m-%d'),
                         help="""The date through which rasters have been resampled. I.E. set to 1990-01-01
                             to download and resample everything from 1990-01-01 to present.""")
-    parser.add_argument('--update', action='store_true',
-                        help='Download new sea-ice rasters before creating new rasters with adjusted '
-                             'no-data values.')
     parser.add_argument('--north', action='store_true',
                         help='Perform actions (update and/or resample on North Pole rasters.')
     parser.add_argument('--south', action='store_true',
@@ -279,10 +282,12 @@ if __name__ == '__main__':
     overwrite = args.overwrite
 
     if not any([north, south]):
-        print('Must choose at least one of --north and/or --south')
-    update_rasters(last_update, dest_dir=sea_ice_dir, north=north, south=south,
-                   dl_extent=dl_extent, dl_concentration=dl_concentration,
-                   overwrite=overwrite)
+        logger.error('Must choose at least one of --north and/or --south')
+        sys.exit()
+
+    dl_sea_ice(last_update, dest_dir=sea_ice_dir, north=north, south=south,
+               dl_extent=dl_extent, dl_concentration=dl_concentration,
+               overwrite=overwrite)
     if nonice2nodata:
         resample_loop(sea_ice_dir, out_dir=out_dir, out_nodata=out_nodata, overwrite=overwrite)
 
